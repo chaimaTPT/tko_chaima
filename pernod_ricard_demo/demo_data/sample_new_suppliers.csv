@@ -1,0 +1,11 @@
+supplier_name,category,address,phone,contact_person,certification,unit_price,currency,lead_time_days
+東京精密ガラス株式会社,ガラスびん,"〒136-0071 東京都江東区亀戸2-15-8",03-5600-1234,佐藤 美咲,ISO 9001; ISO 22000,2800,JPY,18
+Osaka Premium Cork Manufacturing,Corks & Caps,"3-8-15 Namba, Naniwa-ku, Osaka 556-0011",06-6632-5678,田中 太郎,HACCP; ISO 9001,450,yen,22
+北海道オーガニック原料,Raw Materials,"北海道札幌市北区北7条西4-1-2",011-700-9012,鈴木 健太,,5200,円,35
+Kyushu Fruit Extract Co. Ltd,fruit processing,"2-10-5 Hakata-eki-mae, Hakata-ku, Fukuoka 812-0011",092-411-3456,渡辺 由美,FSSC 22000,3100,JPY,28
+名古屋パッケージングソリューション,packaging,"〒450-0002 愛知県名古屋市中村区名駅3-14-7",052-551-7890,中村 大輔,ISO 14001,890,JPY,15
+Shizuoka Water Treatment Systems,Water Management,"1-5-3 Aoi, Aoi-ku, Shizuoka 420-0839",054-252-1234,高橋 花子,ISO 9001; ISO 14001,12500,JPY,42
+広島醸造機器製作所,Brewing Equipment,"広島県広島市南区段原南1-3-52",082-261-5678,山本 翔太,ISO 22000,85000,円,60
+Yokohama Quality Inspection Lab,Quality Inspection,"2-16 Nihon-odori, Naka-ku, Yokohama 231-0021",045-671-9012,伊藤 愛,ISO 9001; HACCP,4500,JPY,12
+新潟ラベル印刷工業,labels & printing,"〒950-0087 新潟県新潟市中央区東大通1-2-25",025-245-3456,小林 健,ISO 9001,320,JPY,14
+Sendai Cold Chain Logistics,Logistics & Transport,"4-6-1 Chuo, Aoba-ku, Sendai 980-0021",022-225-7890,加藤 美咲,,1800,yen,8

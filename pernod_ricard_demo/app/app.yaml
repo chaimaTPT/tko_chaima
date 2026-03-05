@@ -1,0 +1,8 @@
+command: ['npm', 'run', 'start']
+env:
+  - name: 'NODE_ENV'
+    value: 'production'
+  - name: 'DATABRICKS_WAREHOUSE_ID'
+    valueFrom: 'sql-warehouse'
+  - name: 'KA_ENDPOINT'
+    value: 'ka-94303de4-endpoint'

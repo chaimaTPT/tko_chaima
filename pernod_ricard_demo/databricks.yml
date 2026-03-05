@@ -1,0 +1,97 @@
+bundle:
+  name: pernod_ricard_supplier_demo
+
+workspace:
+  host: https://fevm-serverless-opm.cloud.databricks.com
+
+resources:
+  jobs:
+    generate_supplier_data:
+      name: "[${bundle.environment}] Pernod Ricard - Generate Supplier Data"
+      tasks:
+        - task_key: generate_data
+          spark_python_task:
+            python_file: ${workspace.file_path}/scripts/generate_supplier_data.py
+            source: WORKSPACE
+          environment_key: serverless_env
+
+      environments:
+        - environment_key: serverless_env
+          spec:
+            client: "4"
+            dependencies:
+              - "dbldatagen==0.4.0.post1"
+              - "jmespath==1.0.1"
+              - "pyparsing==3.2.5"
+
+    ai_sql_cleaning:
+      name: "[${bundle.environment}] Pernod Ricard - AI SQL Cleaning"
+      tasks:
+        - task_key: clean_data
+          notebook_task:
+            notebook_path: ${workspace.file_path}/notebooks/01_ai_sql_cleaning
+            source: WORKSPACE
+          environment_key: serverless_env
+
+      environments:
+        - environment_key: serverless_env
+          spec:
+            client: "4"
+
+    agent_processing:
+      name: "[${bundle.environment}] Pernod Ricard - Agent Processing"
+      tasks:
+        - task_key: run_agents
+          spark_python_task:
+            python_file: ${workspace.file_path}/scripts/agent_supervisor.py
+            source: WORKSPACE
+          environment_key: serverless_env
+
+      environments:
+        - environment_key: serverless_env
+          spec:
+            client: "4"
+            dependencies:
+              - "databricks-sdk>=0.40.0"
+
+    full_pipeline:
+      name: "[${bundle.environment}] Pernod Ricard - Full Pipeline"
+      tasks:
+        - task_key: step1_generate_data
+          spark_python_task:
+            python_file: ${workspace.file_path}/scripts/generate_supplier_data.py
+            source: WORKSPACE
+          environment_key: serverless_env
+
+        - task_key: step2_ai_cleaning
+          notebook_task:
+            notebook_path: ${workspace.file_path}/notebooks/01_ai_sql_cleaning
+            source: WORKSPACE
+          environment_key: serverless_env
+          depends_on:
+            - task_key: step1_generate_data
+
+        - task_key: step3_agent_processing
+          spark_python_task:
+            python_file: ${workspace.file_path}/scripts/agent_supervisor.py
+            source: WORKSPACE
+          environment_key: serverless_env
+          depends_on:
+            - task_key: step2_ai_cleaning
+
+      environments:
+        - environment_key: serverless_env
+          spec:
+            client: "4"
+            dependencies:
+              - "dbldatagen==0.4.0.post1"
+              - "jmespath==1.0.1"
+              - "pyparsing==3.2.5"
+              - "databricks-sdk>=0.40.0"
+
+targets:
+  development:
+    mode: development
+    default: true
+    workspace:
+      root_path: /Users/${workspace.current_user.userName}/.bundle/${bundle.name}/${bundle.environment}
