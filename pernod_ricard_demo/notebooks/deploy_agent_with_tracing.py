@@ -4,7 +4,7 @@
 # MAGIC
 # MAGIC This notebook:
 # MAGIC 1. Links a UC schema to an MLflow experiment for trace storage
-# MAGIC 2. Re-logs the agent with `mlflow[databricks]>=3.9.0` and tracing support
+# MAGIC 2. Writes the agent code to a file and logs it using **code-based logging**
 # MAGIC 3. Registers the new version in Unity Catalog
 # MAGIC 4. Deploys to the serving endpoint with `MLFLOW_TRACING_DESTINATION` set
 # MAGIC 5. Grants permissions on trace tables
@@ -79,10 +79,20 @@ except Exception as e:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 3. Define & Log the Agent
+# MAGIC ## 3. Write Agent Code to File
+# MAGIC
+# MAGIC MLflow requires **code-based logging** for complex agents. We write `agent.py` to disk
+# MAGIC and pass the file path to `log_model()`.
 
 # COMMAND ----------
 
+AGENT_CODE = '''
+"""
+Pernod Ricard Japan - Supplier Intelligence Agent
+Custom agent built with Databricks Agent Framework + MLflow 3.
+"""
+import os
+import mlflow
 from mlflow.pyfunc import ResponsesAgent
 from mlflow.types.responses import (
     ResponsesAgentRequest,
@@ -91,9 +101,7 @@ from mlflow.types.responses import (
     output_to_responses_items_stream,
     to_chat_completions_input,
 )
-from mlflow.models.resources import DatabricksServingEndpoint, DatabricksFunction
 from databricks_langchain import ChatDatabricks, UCFunctionToolkit, VectorSearchRetrieverTool
-from unitycatalog.ai.langchain.toolkit import UnityCatalogTool
 from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableLambda
 from langgraph.graph import END, StateGraph
@@ -103,14 +111,6 @@ from typing import Annotated, Generator, Sequence, TypedDict
 
 LLM_ENDPOINT = "databricks-claude-sonnet-4-5"
 VS_INDEX = "opm_catalog.supplier_hub.procurement_docs_index"
-
-UC_FUNCTIONS = [
-    "opm_catalog.supplier_hub.get_supplier_overview",
-    "opm_catalog.supplier_hub.list_non_compliant_suppliers",
-    "opm_catalog.supplier_hub.get_spend_by_category",
-    "opm_catalog.supplier_hub.validate_delivery_quality",
-    "opm_catalog.supplier_hub.get_supplier_risk_summary",
-]
 
 SYSTEM_PROMPT = """You are the Pernod Ricard Japan Supplier Intelligence Assistant.
 You help procurement managers with supplier data analysis and policy compliance.
@@ -131,6 +131,14 @@ When answering:
 - Cite specific policy sections when relevant
 - Be concise but thorough
 """
+
+UC_FUNCTIONS = [
+    "opm_catalog.supplier_hub.get_supplier_overview",
+    "opm_catalog.supplier_hub.list_non_compliant_suppliers",
+    "opm_catalog.supplier_hub.get_spend_by_category",
+    "opm_catalog.supplier_hub.validate_delivery_quality",
+    "opm_catalog.supplier_hub.get_supplier_risk_summary",
+]
 
 
 class AgentState(TypedDict):
@@ -200,27 +208,58 @@ class SupplierIntelligenceAgent(ResponsesAgent):
                         yield from output_to_responses_items_stream(node_data["messages"])
 
 
-# Enable autologging — traces all LangChain/LangGraph calls
+# Enable autologging for tracing
 mlflow.langchain.autolog()
 
+# Set trace destination if configured
+_trace_dest = os.environ.get("MLFLOW_TRACING_DESTINATION")
+if _trace_dest:
+    try:
+        from mlflow.entities import UCSchemaLocation
+        parts = _trace_dest.split(".")
+        if len(parts) == 2:
+            mlflow.tracing.set_destination(
+                destination=UCSchemaLocation(catalog_name=parts[0], schema_name=parts[1])
+            )
+    except Exception:
+        pass
+
 AGENT = SupplierIntelligenceAgent()
-print("Agent instantiated with autologging enabled.")
+mlflow.models.set_model(AGENT)
+'''
+
+# Write agent.py to the current working directory
+agent_file_path = os.path.join(os.getcwd(), "agent.py")
+with open(agent_file_path, "w") as f:
+    f.write(AGENT_CODE)
+
+print(f"Agent code written to: {agent_file_path}")
 
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 4. Collect Resources & Log Model
+# MAGIC ## 4. Collect Resources & Log Model (Code-Based)
 
 # COMMAND ----------
 
-# Collect all Databricks resources the agent needs
-resources = [DatabricksServingEndpoint(endpoint_name=LLM_ENDPOINT)]
+from mlflow.models.resources import DatabricksServingEndpoint, DatabricksFunction, DatabricksVectorSearchIndex
 
-for tool in AGENT.tools:
-    if isinstance(tool, UnityCatalogTool):
-        resources.append(DatabricksFunction(function_name=tool.uc_function_name))
-    elif isinstance(tool, VectorSearchRetrieverTool):
-        resources.extend(tool.resources)
+LLM_ENDPOINT = "databricks-claude-sonnet-4-5"
+VS_INDEX = "opm_catalog.supplier_hub.procurement_docs_index"
+UC_FUNCTIONS = [
+    "opm_catalog.supplier_hub.get_supplier_overview",
+    "opm_catalog.supplier_hub.list_non_compliant_suppliers",
+    "opm_catalog.supplier_hub.get_spend_by_category",
+    "opm_catalog.supplier_hub.validate_delivery_quality",
+    "opm_catalog.supplier_hub.get_supplier_risk_summary",
+]
+
+resources = [
+    DatabricksServingEndpoint(endpoint_name=LLM_ENDPOINT),
+    DatabricksVectorSearchIndex(index_name=VS_INDEX),
+]
+for fn in UC_FUNCTIONS:
+    resources.append(DatabricksFunction(function_name=fn))
 
 print(f"Resources ({len(resources)}):")
 for r in resources:
@@ -235,7 +274,7 @@ input_example = {
 with mlflow.start_run(run_name="agent_v2_with_tracing"):
     model_info = mlflow.pyfunc.log_model(
         name="agent",
-        python_model=AGENT,
+        python_model=agent_file_path,  # Code-based logging — pass file path, NOT the object
         input_example=input_example,
         resources=resources,
         pip_requirements=[
@@ -326,7 +365,7 @@ print("Deployment complete!")
 # COMMAND ----------
 
 import time
-time.sleep(10)  # Brief wait for endpoint to stabilize
+time.sleep(10)
 
 client = w.serving_endpoints.get_open_ai_client()
 
@@ -343,8 +382,7 @@ print(f"Response: {test_response.choices[0].message.content[:500]}...")
 
 # COMMAND ----------
 
-import time
-time.sleep(30)  # Wait for trace to be ingested
+time.sleep(30)
 
 traces_df = mlflow.search_traces(
     experiment_ids=[experiment_id],
@@ -365,9 +403,9 @@ else:
 # MAGIC
 # MAGIC | Component | Status |
 # MAGIC |-----------|--------|
-# MAGIC | **Autologging** | `mlflow.langchain.autolog()` — traces all LangChain/LangGraph calls |
+# MAGIC | **Autologging** | `mlflow.langchain.autolog()` in agent.py — traces all LangChain/LangGraph calls |
 # MAGIC | **Trace destination** | `opm_catalog.supplier_hub` (UC Delta tables) |
-# MAGIC | **Model** | Logged with `mlflow[databricks]>=3.9.0` |
+# MAGIC | **Logging method** | Code-based logging (`python_model="agent.py"`) |
 # MAGIC | **UC Registry** | `opm_catalog.agents.supplier_intelligence_agent` |
 # MAGIC | **Serving endpoint** | `supplier-intelligence-agent` with `MLFLOW_TRACING_DESTINATION` |
 # MAGIC | **Trace tables** | `mlflow_experiment_trace_otel_spans/logs/metrics` |
@@ -375,4 +413,4 @@ else:
 # MAGIC **Next steps:**
 # MAGIC - Run the `agent_evaluation` notebook to evaluate with scorers
 # MAGIC - View traces in the Experiments UI > Traces tab
-# MAGIC - Query traces via SQL: `SELECT * FROM opm_catalog.supplier_hub.mlflow_experiment_trace_otel_spans`
+# MAGIC - Query traces: `SELECT * FROM opm_catalog.supplier_hub.mlflow_experiment_trace_otel_spans`
