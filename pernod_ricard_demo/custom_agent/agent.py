@@ -6,7 +6,9 @@ Uses:
 - LangGraph for orchestration
 - Vector Search for RAG over procurement policies
 - UC Functions as tools for supplier data queries
+- MLflow autologging for tracing to Unity Catalog
 """
+import os
 import mlflow
 from mlflow.pyfunc import ResponsesAgent
 from mlflow.types.responses import (
@@ -26,6 +28,8 @@ from typing import Annotated, Generator, Sequence, TypedDict
 
 LLM_ENDPOINT = "databricks-claude-sonnet-4-5"
 VS_INDEX = "opm_catalog.supplier_hub.procurement_docs_index"
+TRACE_CATALOG = "opm_catalog"
+TRACE_SCHEMA = "supplier_hub"
 
 SYSTEM_PROMPT = """You are the Pernod Ricard Japan Supplier Intelligence Assistant.
 You help procurement managers with supplier data analysis and policy compliance.
@@ -125,6 +129,25 @@ class SupplierIntelligenceAgent(ResponsesAgent):
                         yield from output_to_responses_items_stream(node_data["messages"])
 
 
+# Enable autologging — traces all LangChain/LangGraph calls automatically
 mlflow.langchain.autolog()
+
+# Set trace destination to Unity Catalog if MLFLOW_TRACING_DESTINATION is configured
+# (set via serving endpoint env var or notebook)
+_trace_dest = os.environ.get("MLFLOW_TRACING_DESTINATION")
+if _trace_dest:
+    try:
+        from mlflow.entities import UCSchemaLocation
+        parts = _trace_dest.split(".")
+        if len(parts) == 2:
+            mlflow.tracing.set_destination(
+                destination=UCSchemaLocation(
+                    catalog_name=parts[0],
+                    schema_name=parts[1],
+                )
+            )
+    except Exception:
+        pass  # Tracing destination will fall back to default
+
 AGENT = SupplierIntelligenceAgent()
 mlflow.models.set_model(AGENT)

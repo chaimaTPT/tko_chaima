@@ -6,6 +6,7 @@ from unitycatalog.ai.langchain.toolkit import UnityCatalogTool
 from databricks_langchain import VectorSearchRetrieverTool
 
 mlflow.set_registry_uri("databricks-uc")
+mlflow.set_tracking_uri("databricks")
 mlflow.set_experiment("/Users/chaima.berrachdi@databricks.com/pernod_ricard_demo/supplier_intelligence_agent")
 
 # Collect resources for auto authentication
@@ -30,9 +31,9 @@ with mlflow.start_run():
         input_example=input_example,
         resources=resources,
         pip_requirements=[
-            "mlflow==3.6.0",
+            "mlflow[databricks]>=3.9.0",
             "databricks-langchain",
-            "langgraph==0.3.4",
+            "langgraph>=0.3.4",
             "pydantic",
             "databricks-agents",
         ],
